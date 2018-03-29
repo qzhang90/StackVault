@@ -1,0 +1,72 @@
+#include "utils_stack.h"
+
+void Stack_Init(Stack *S, int type)
+{
+    S->size = 0;
+    S->type = type;
+}
+
+void* Stack_Top(Stack *S)
+{
+    if (S->size == 0) {
+        printk(KERN_WARNING, "Error: stack empty\n");
+        return NULL;
+    } 
+
+    if(S->type == REG_STACK) {
+        return (void *)&(S->data.reg_stack[S->size - 1]);
+    }else if(S->type == PROTECTED_STACK) {
+        return (void *)&(S->data.protected_stack[S->size - 1]);
+    }else {
+        printk(KERN_WARNING "invalid data in the Stack, shoud be REG_STACK or PROTECTED_STACK\n");
+        return NULL;
+    }
+}
+
+void Stack_Push(Stack *S, void *d)
+{
+    if (S->size < STACK_MAX){
+        if(S->type == REG_STACK) {
+            reg_stack *p = (reg_stack *)d;
+            reg_stack *q = &(S->data.reg_stack[S->size++]);
+            q->user_rsp = p->user_rsp;
+            q->user_rbp = p->user_rbp;
+        }else if(S->type == PROTECTED_STACK){
+            protected_stack *p = (protected_stack *)d;
+            protected_stack *q = &(S->data.protected_stack[S->size++]);
+            q->user_rsp = p->user_rsp;
+            q->user_rbp = p->user_rbp;
+
+            q->buf = (char *)kmalloc(sizeof(char)*(q->user_rbp - q->user_rsp), GFP_KERNEL);
+            if(q->buf == NULL) {
+                printk(KERN_ERR "kmalloc failed when copying data to Stack\n");
+            }
+            
+            memcpy(q->buf, (char *)q->user_rsp, q->user_rbp - q->user_rsp);
+
+        }else{
+            printk(KERN_WARNING "invalid data in the Stack, shoud be REG_STACK or PROTECTED_STACK\n");
+        }    
+    }else{
+        printk(KERN_WARNING, "Error: stack full\n");
+    }
+}
+
+void* Stack_Pop(Stack *S)
+{
+    if (S->size == 0){
+        printk(KERN_WARNING, "Stack empty when trying to pop\n");
+        return NULL;
+    }else{
+        void *p = Stack_Top(S);
+        S->size--;
+        return p;
+    }
+}
+
+bool Stack_Empty(Stack *S) {
+    if(S->size == 0)
+        return true;
+    else
+        return false;
+}
