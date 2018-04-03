@@ -18,20 +18,22 @@ char *path_to_exe = "/home/qi/stackvault-from-zehra/mini-example/a.out";
 
 // Register the boundaries (user_rbp, user_rsp) of a stack
 long jsys_register_stack(void) {
-	printk(KERN_INFO "jsys_register_stack is called\n");
 	reg_stack *r = NULL;
 	
 	register unsigned long kernel_rbp asm("rbp");
 	unsigned long user_rbp = *((unsigned long*)kernel_rbp);
+	//user_rbp += 0x20; //offset due to function from stackvault.c
 
 	const struct pt_regs *regs = task_pt_regs(current);
-	unsigned long user_rsp = regs->sp + 0x10; //0x10 is a result of stackvault.c from libstackvault.a
+	unsigned long user_rsp = regs->sp;
+	//unsigned long user_rsp = regs->sp +0x18; //offset due to function from stackvault.c
 	//unsigned long user_rsp = kernel_rbp;
 
 	// the function name check is not necessary when register() has not parameter
 	#ifdef REG_WITH_PARAMETER
 	char *func_name;
-	unsigned long user_ip = *((unsigned long *)kernel_rbp + 12);
+	const struct pt_regs *regs = task_pt_regs(current);
+	unsigned long user_ip = regs->ip;
 	if(mapper == NULL) {
 		printk(KERN_ERR "symbol table has not been not ready\n");
 		jprobe_return();
@@ -64,8 +66,6 @@ long jsys_register_stack(void) {
 
 // Unregister the boundaries of a stack
 long jsys_unregister_stack(void) {
-	printk(KERN_INFO "jsys_unregister_stack is called\n");
-
 	reg_stack *r = (reg_stack *)Stack_Pop(&rstack);
 	printk(KERN_INFO "jsys_unregister_stack: user_rbp = %p, user_rsp = %p\n", r->user_rbp, r->user_rsp);
 	if(r == NULL) {
@@ -82,24 +82,16 @@ long jsys_unregister_stack(void) {
 
 // Encrypt the registered stack
 long jsys_encrypt_stack(void) {
-	printk(KERN_INFO "jsys_encrypt_stack is called\n");
-
 	protected_stack *p = NULL;
-	unsigned long user_rbp, user_rsp;
+	reg_stack *q = NULL;
 	char *func_name;
+	int bytes = 0;
+	int reg_stack_idx = 0;
 	
 
 	register unsigned long kernel_rbp asm("rbp");
 	const struct pt_regs *regs = task_pt_regs(current);
 	unsigned long user_ip = regs->ip;
-	//unsigned long user_ip = *((unsigned long *)kernel_rbp + 12);
-
-	//No stack is registered
-	if (Stack_Empty(&rstack)) {
-		printk(KERN_ERR "jsys_encrypt_stack: no stack has been registered\n");
-		jprobe_return();
-		return -1;
-	}
 
 	if(mapper == NULL) {
 		printk(KERN_ERR "symbol table has not been not ready\n");
@@ -109,47 +101,72 @@ long jsys_encrypt_stack(void) {
 
 	func_name = get_func_name(mapper, user_ip);
 	printk(KERN_INFO "jsys_encrypt_stack: func_name is %s, user_ip is %lx\n", func_name, user_ip);
+	
 
 	if(func_name == NULL) {
 		printk(KERN_ERR "func_name is NULL\n");
 		jprobe_return();
 		return -1;
 	}
+	//TODO: check whether func_name is in white list
 
-	/*
-	// Protect the stack: copy the function stack into kernel
-	p = (protected_stack *)kmalloc(sizeof(protected_stack), GFP_KERNEL);
-	
-	p->buf = (char *)p->user_rsp;
-	p->user_rsp = user_rsp;
-	p->user_rbp = user_rbp;
-
-	p->buf = (char *)kmalloc(sizeof(char)*(p->user_rbp - p->user_rsp), GFP_KERNEL);
-	if(p->buf) {
-		memcpy(p->buf, (char *)p->user_rsp, p->user_rbp - p->user_rsp);
-		memset((char *)p->user_rsp, '0', p->user_rbp - p->user_rsp);
-	}else{
-		printk(KERN_ERR "jsys_encrypt_stack: kernel buffer allocation failed");
+	reg_stack_idx = rstack.size;
+	if(reg_stack_idx == 0) {
+		printk(KERN_ERR "jsys_encrypt_stack: no stack has been registered\n");
+		jprobe_return();
+		return -1;
 	}
 
+	// encrypt all the registered stacks
+	while(reg_stack_idx > 0) {
+		q = (reg_stack *)(rstack.data[reg_stack_idx - 1]);
 
-	if(user_rbp < user_rsp) {
-        printk(KERN_ERR "rbp should not be smaller than rsp\n");
-		jprobe_return();
-        return -1;
-    }
+		p = (protected_stack *)kmalloc(sizeof(protected_stack), GFP_KERNEL);
+		if(!p){
+			printk(KERN_ERR "encrypt stack: kernel allocation failed\n");
+			jprobe_return();
+			return -1;
+		}
+		
+		p->buf = (char *)p->user_rsp;
+		p->user_rsp = q->user_rsp;
+		p->user_rbp = q->user_rbp;
 
-	Stack_Push(&pstack, (void *)p);
-	kfree(p);
-	*/
+		if(p->user_rbp < p->user_rsp) {
+			printk(KERN_ERR "rbp should not be smaller than rsp\n");
+			jprobe_return();
+			return -1;
+		}
+
+
+		p->buf = (char *)kmalloc(sizeof(char)*(p->user_rbp - p->user_rsp), GFP_KERNEL);
+		printk(KERN_INFO "jsys_encrypt_stack: p->user_rsp = %p, p->user_rbp = %p, p->buf = %p\n", p->user_rsp, p->user_rbp, p->buf);
+		if(p->buf) {
+			bytes = copy_from_user(p->buf, (char *)p->user_rsp, p->user_rbp - p->user_rsp);
+			if(bytes){
+				printk(KERN_ERR "encrypt_stack: failed to copy user stack data to the kernel\n");
+			}
+			
+			bytes = clear_user((char *)p->user_rsp, p->user_rbp - p->user_rsp);
+			if(bytes){
+				printk(KERN_ERR "encrypt_stack: failed to clear the user stack\n");
+			}
+		}else{
+			printk(KERN_ERR "jsys_encrypt_stack: kernel buffer allocation failed");
+		}
+
+		Stack_Push(&pstack, (void *)p);
+		reg_stack_idx--;
+	}
+
 	jprobe_return();
 	return 0;
 }
 
 long jsys_decrypt_stack(void){
-	printk(KERN_INFO "jsys_decrypt_stack is called\n");
-	/*
+	
 	protected_stack *p = NULL;
+	int bytes = 0;
 
 	//No stack is registered
 	if (Stack_Empty(&rstack)) {
@@ -158,19 +175,25 @@ long jsys_decrypt_stack(void){
 		return -1;
 	}
 
-	// Unprotect the stack: restore the function stack
-	p = (protected_stack *)Stack_Pop(&pstack);
+	while(true){
+		// Unprotect the stack: restore the function stack
+		p = (protected_stack *)Stack_Pop(&pstack);
 
-	if(p == NULL) {
-		printk(KERN_ERR "jsys_decrypt_stack: cannot pop from an empty stack\n");
-		jprobe_return();
-		return -1;
+		if(p == NULL) {
+			break;
+		}
+
+		printk(KERN_INFO "jsys_decrypt_stack: p->user_rsp = %p, p->user_rbp = %p, p->buf = %p\n", p->user_rsp, p->user_rbp, p->buf);
+		
+		bytes = copy_to_user((char *)p->user_rsp, p->buf, p->user_rbp - p->user_rsp);
+		if(bytes){
+			printk(KERN_ERR "decrypt stack: failed to restore the user stack\n");
+		}
+		
+		kfree(p->buf);
+		kfree(p);
 	}
-
-	memcpy((char *)p->user_rsp, p->buf, p->user_rbp - p->user_rsp);
-	kfree(p->buf);
-	kfree(p);
-	*/
+		
 	jprobe_return();
 	return 0;
 }

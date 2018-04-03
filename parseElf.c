@@ -203,12 +203,12 @@ void parse(char *file_name, item_t **mapper){
 	sym = elf_firstsym(elf_obj);
 	
 	do{
-		
+		/*
 		printk("Symbol name = %-30s, value = %-30lx, size = %-30ld\n", 
 			elf_symname(elf_obj, sym),
 			elf_symvalue(elf_obj, sym),
 			elf_symsize(elf_obj, sym));
-		
+		*/
 	
 		symname = elf_symname(elf_obj, sym);
 		size = elf_symsize(elf_obj, sym);
