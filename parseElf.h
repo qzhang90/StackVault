@@ -49,5 +49,5 @@ Elf64_Sym *elf_firstdsym(Elf_obj *ep);
 Elf64_Sym *elf_nextdsym(Elf_obj *ep, Elf64_Sym *sym);
 char *elf_dsymname(Elf_obj *ep, Elf64_Sym *sym);
 int elf_isdfunc(Elf_obj *ep, Elf64_Sym *sym);
-void parse(char *file_name, item_t **mapper);
+int parse(char *file_name, item_t **mapper);
 #endif

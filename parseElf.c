@@ -188,16 +188,17 @@ int elf_isdfunc(Elf_obj *ep, Elf64_Sym *sym)
     return ((ELF32_ST_TYPE(sym->st_info) == STT_FUNC));
 }
 
-void parse(char *file_name, item_t **mapper){
+int parse(char *file_name, item_t **mapper){
 	char *symname;
 	unsigned long ip, size;
 	Elf64_Sym *sym;
 	Elf_obj *elf_obj = elf_open(file_name);
-	int ret;
+	int ret = 0;
 
 	if(elf_obj == NULL){
 		printk(KERN_ERR "elf_obj open failed\n");
-		return;
+		ret = -1;
+		return ret;
 	}
 	
 	sym = elf_firstsym(elf_obj);
@@ -218,7 +219,8 @@ void parse(char *file_name, item_t **mapper){
 			ret = insert_mapper(mapper, symname, ip, size);
 			if(ret == -1){
 				printk(KERN_ERR "insert_mapper failed\n");
-				return;
+				ret = -1;
+				return ret;
 			}
 		}
 		sym = elf_nextsym(elf_obj, sym);
@@ -233,4 +235,5 @@ void parse(char *file_name, item_t **mapper){
 	*/
 	
 	elf_close(elf_obj);
+	return ret;
 }

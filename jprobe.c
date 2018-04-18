@@ -63,6 +63,11 @@ long jsys_register_stack(void) {
 	return 0;
 }
 
+long jsys_register_stack_withargs(unsigned long base, unsigned long len) {
+	printk(KERN_INFO "jsys_register_stack_withargs: base = %p, len = %ld\n", base, len);
+	jprobe_return();
+	return 0;
+}
 
 // Unregister the boundaries of a stack
 long jsys_unregister_stack(void) {
@@ -205,6 +210,13 @@ static struct jprobe jsys_register_stack_probe = {
 	},
 };
 
+static struct jprobe jsys_register_stack_withargs_probe = {
+	.entry			= jsys_register_stack_withargs,
+	.kp = {
+		.symbol_name	= "sys_register_stack_withargs",
+	},
+};
+
 static struct jprobe jsys_unregister_stack_probe = {
 	.entry			= jsys_unregister_stack,
 	.kp = {
@@ -234,6 +246,12 @@ static int __init jprobe_init(void)
 		return -1;
 	}
 
+	ret = register_jprobe(&jsys_register_stack_withargs_probe);
+	if (ret < 0) {
+		printk(KERN_INFO "register_jsys_register_stack_withargs_probe failed, returned %d\n", ret);
+		return -1;
+	}
+
 	ret = register_jprobe(&jsys_unregister_stack_probe);
 	if (ret < 0) {
 		printk(KERN_INFO "register_jsys_unregister_stack_probe failed, returned %d\n", ret);
@@ -258,8 +276,12 @@ static int __init jprobe_init(void)
 
 	if (symbol_table_init == 0) {
 		mapper = init_mapper(8);
-		parse(path_to_exe, &mapper);
-		symbol_table_init = 1;
+		if(parse(path_to_exe, &mapper) == 0){
+			symbol_table_init = 1;
+		}else{
+			printk(KERN_ERR "parse the ELF failed, please try again\n");
+		}
+		
 	}
 
 	return 0;
@@ -268,6 +290,7 @@ static int __init jprobe_init(void)
 static void __exit jprobe_exit(void)
 {
 	unregister_jprobe(&jsys_register_stack_probe);
+	unregister_jprobe(&jsys_register_stack_withargs_probe);
 	unregister_jprobe(&jsys_unregister_stack_probe);
 	unregister_jprobe(&jsys_encrypt_stack_probe);
 	unregister_jprobe(&jsys_decrypt_stack_probe);
