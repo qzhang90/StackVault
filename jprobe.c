@@ -115,7 +115,7 @@ long jsys_register_stack_withargs(unsigned long base, unsigned long len) {
 
 
 /*
- * From rstack, pop out the most recently registered stack areas as well as its associate heap areas.
+ * From rstack, pop out the most recently registered stack areas as well as its associated heap areas.
  * This needs to be done when a sensitive function finishes.
  */
 long jsys_unregister_stack(void) {
