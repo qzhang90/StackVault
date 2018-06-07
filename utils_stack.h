@@ -4,16 +4,37 @@
 #define STACK_MAX 100
 #define REG_STACK 0
 #define PROTECTED_STACK 1
+#define PROTECTED_EXCEPTION_STACK 2
+
 
 struct reg_stack {
-    unsigned long user_rsp;
-    unsigned long user_rbp;
+    union {
+        unsigned long user_rsp;
+        unsigned long base;
+    } data1;
+    union{
+        unsigned long user_rbp;
+        unsigned long len;
+    } data2;
+    
+    int is_arg;
 };
 
 struct protected_stack{
 	char *buf;
-	unsigned long user_rsp;
-	unsigned long user_rbp;
+    union {
+        unsigned long user_rsp;
+        unsigned long base;
+    } data1;
+	
+    union {
+        unsigned long user_rbp;
+        unsigned long len;
+    } data2;
+
+    int is_arg;
+    char *func_name;
+	
 };
 
 
